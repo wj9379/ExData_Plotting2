@@ -1,0 +1,99 @@
+# Load libraries
+library(dplyr)
+library(ggplot2)
+library(grid)
+library(VIM)
+library(plyr)
+
+
+# Load data
+emi=readRDS("summarySCC_PM25.rds")
+scc=readRDS("Source_Classification_Code.rds")
+
+#Data overview
+str(emi)
+str(scc)
+
+#1.Have total emissions from PM2.5 decreased in the United States from 1999 to 2008?
+#Using the base plotting system, make a plot showing the total PM2.5 emission from all sources for each of the years 1999, 2002, 2005, and 2008.
+total_emi=tapply(emi$Emissions,emi$year,sum)
+par(mfrow=c(1,1))
+barplot(total_emi,xlab = "Year", ylab = "Total PM2.5 Emissions in Tons", main = "Total PM 2.5 Emissions (tons) in USA")
+dev.copy(png,'plot1.png',width=480,height=480)
+dev.off()
+#Answer Yes
+
+#2.Have total emissions from PM2.5 decreased in the Baltimore City, Maryland (fips == "24510"\color{red}{\verb|fips == "24510"|}fips=="24510") from 1999 to 2008? 
+#Use the base plotting system to make a plot answering this question.
+Baltimore=filter(emi,fips=='24510')
+total_baltimore=tapply(Baltimore$Emissions,Baltimore$year,sum)
+barplot(total_baltimore, xlab = "Year", ylab = "Total PM2.5 Emissions (Tons)", main = "Yearly Emissions (tons) in Baltimore City, Maryland")
+dev.copy(png,'plot2.png',width=480,height=480)
+dev.off()
+# Answer:Yes. Overall, the emissions have decreased.
+
+#3.Of the four types of sources indicated by the type\color{red}{\verb|type|}type (point, nonpoint, onroad, nonroad) variable, 
+#which of these four sources have seen decreases in emissions from 1999-2008 for Baltimore City? Which have seen increases in emissions from 1999-2008? 
+#Use the ggplot2 plotting system to make a plot answer this question.
+Baltimore=filter(emi,fips=='24510')
+type_baltimore=ddply(Baltimore,.(year,type),function(x) emissons=sum(x$Emissions))
+names(type_baltimore)[3]='emissions'
+qplot(year,emissions,data=type_baltimore,color=type,geom='line')+labs(x='year',y='Total PM2.5 Emissions in tons',title='Emission by Type and Year in Baltimore City')
+dev.copy(png,'plot3.png',width=480,height=480)
+dev.off()
+#Answer: Non-road, nonpoint and on-road have decreased overall in Baltimore
+
+
+#4.Across the United States, how have emissions from coal combustion-related sources changed from 1999-2008?
+#emi2=emi[emi$SCC %in% scc[grep('Coal',scc$EI.Sector),1],]
+coal <- grep("coal", scc$Short.Name, ignore.case = TRUE)
+coal <- scc[coal, ]
+coal_emi=emi[emi$SCC %in%coal$SCC, ]
+total_coal=data.frame(tapply(coal_emi$Emissions,coal_emi$year,sum))
+colnames(total_coal)='Emissions'
+total_coal$year=row.names(total_coal)
+
+ggplot(total_coal,aes(x=year,y=Emissions))+ geom_point(size=5,shape=10) + labs(x='year',y='Emissons',title="PM2.5 Emission by Coal Combustion in USA")+
+        theme(plot.title = element_text(hjust = 0.5))
+dev.copy(png,'plot4.png',width=480,height=480)
+dev.off()
+#Answer: Emissions from coal combustion related soureces have decreased arond 1/3 during the decade
+
+#5.How have emissions from motor vehicle sources changed from 1999-2008 in Baltimore City?
+
+vehicles1 <- unique(grep("Vehicles", scc$EI.Sector, ignore.case = TRUE, value = TRUE))
+vehicles <- scc[scc$EI.Sector %in% vehicles1, ]["SCC"]
+vehiclesBaltimore <- emi[emi$SCC %in% vehicles$SCC & emi$fips == "24510",]
+
+vehiclesBaltimoreyear <- ddply(vehiclesBaltimore, .(year), function(x) sum(x$Emissions))
+
+colnames(vehiclesBaltimoreyear)[2] <- "emissions"
+
+qplot(year, emissions, data = vehiclesBaltimoreyear, geom = "line", color = emissions) + ggtitle("Emissions by Motor Vehicles in Baltimore City") + xlab("Year") +
+        ylab("Emissions in Tons")
+dev.copy(png,'plot5.png',width=480,height=480)
+dev.off()
+#Answer: Yes, Emissions from motor vehicle sources have dropped during this time frame
+
+
+
+
+#6.Compare emissions from motor vehicle sources in Baltimore City with emissions from motor vehicle sources in Los Angeles County, California (fips == "06037"\color{red}{\verb|fips == "06037"|}fips=="06037"). 
+#Which city has seen greater changes over time in motor vehicle emissions?
+
+vehiclesLosAngelesCounty <- emi[emi$SCC %in% vehicles$SCC & emi$fips == "06037",]
+
+vehiclesCompare <- rbind(vehiclesBaltimore, vehiclesLosAngelesCounty)
+
+vehiclesCompareyear <- aggregate(Emissions ~ fips * year, data = vehiclesCompare, FUN = sum )
+
+vehiclesCompareyear$country <- ifelse(vehiclesCompareyear$fips == "06037", "Los Angeles", "Baltimore")
+
+ggplot(vehiclesCompareyear,aes(x=factor(year),y=Emissions, fill=country))+geom_bar(aes(fill=year),stat="identity") +
+        facet_grid(scales="free", space="free", .~country) +
+        guides(fill=FALSE) + theme_bw() +
+        labs(x="year", y=expression("Emission (Kilo-Tons)")) + 
+        labs(title=expression("Motor Vehicle Source Emissions in Baltimore & LA"))
+dev.copy(png,'plot6.png',width=480,height=480)
+dev.off()
+#Answer: LA has seen the greater change than that in Baltimore
